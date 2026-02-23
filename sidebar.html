@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PikPak Extractor PRO</title>
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      /* Sidebar-specific tweaks */
+      body {
+        margin: 0;
+        padding: 0;
+        height: 100vh;
+        overflow: hidden;
+      }
+      #pikpak-extractor-panel {
+        position: relative !important;
+        top: 0 !important;
+        right: 0 !important;
+        left: 0 !important;
+        width: 100% !important;
+        height: 100vh !important;
+        border: none !important;
+        border-radius: 0 !important;
+        box-shadow: none !important;
+        resize: none !important;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="pikpak-extractor-panel">
+      <div class="panel-header" id="pikpak-drag-handle">
+        <div class="panel-title">PikPak Extractor PRO</div>
+        <div class="header-actions">
+          <button class="btn btn-primary btn-small" id="pikpak-export">
+            Export
+          </button>
+          <button class="btn btn-secondary btn-small" id="pikpak-clear">
+            Clear
+          </button>
+        </div>
+      </div>
+      <div class="panel-body" id="pikpak-url-list">
+        <div class="panel-empty">
+          <div class="icon">🔍</div>
+          <div>Đang chờ bắt link video...</div>
+        </div>
+      </div>
+    </div>
+    <script src="sidebar.js"></script>
+  </body>
+</html>
