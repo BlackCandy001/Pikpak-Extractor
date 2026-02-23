@@ -54,4 +54,5 @@
 
 ---
 
-_Phát triển bởi Đội ngũ Senior Chrome Extension Engineer._
+Hiện tại vẫn còn khá nhiều bug và vẫn chưa lấy đúng 100% url cần thiết để dowloand dữ liệu!
+Nhưng vẫn dùng được
