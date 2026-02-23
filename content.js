@@ -9,41 +9,111 @@
   // 2. Lắng nghe tin nhắn từ injected.js khi tìm thấy URL
   window.addEventListener('message', (event) => {
     if (event.data && event.data.type === 'PIKPAK_URL_FOUND') {
-      addUrl(event.data.url);
+      addUrl(event.data.url, event.data.metadata);
     }
   });
 
-  function getCurrentTitle() {
-    // Ưu tiên các selector cho video đang phát hoặc đang được chọn
-    const selectors = [
-      '.video-title', 
-      '.disabled-rename.title',
-      '.checked .name .ellipsis', // Dành cho giao diện danh sách/lưới của PikPak
-      '.name .ellipsis',
-      '.pp-link-button.ellipsis.active'
-    ];
+  // Hàm lấy metadata từ DOM hiện tại (Dự phòng cho JSON)
+  function getCurrentMetadata() {
+    // Ưu tiên:
+    // 1. Hàng đang được chọn (Checked) - Người dùng chủ động tác động
+    // 2. Hàng đang xem (Current-path)
+    // 3. Hàng đang hover/active
+    let activeRow = document.querySelector('.checked.row') || 
+                    document.querySelector('.current-path.row') ||
+                    document.querySelector('.row:hover') ||
+                    document.querySelector('.row');
+    
+    let metadata = {
+      title: document.title.replace(' - PikPak', '').replace('PikPak', '').trim(),
+      size: null,
+      time: null,
+      thumbnail: null
+    };
 
-    for (const selector of selectors) {
-      const el = document.querySelector(selector);
-      if (el && el.textContent.trim()) {
-        return el.textContent.trim();
+    if (activeRow) {
+      // Lấy Tiêu đề
+      const label = activeRow.getAttribute('aria-label');
+      const titleEl = activeRow.querySelector('.ellipsis');
+      if (label && label.trim()) metadata.title = label.trim();
+      else if (titleEl) metadata.title = titleEl.textContent.trim();
+
+      // Lấy Dung lượng và Thời gian
+      const extraInfo = activeRow.querySelector('.extra-info');
+      if (extraInfo) {
+        const divs = extraInfo.querySelectorAll('div');
+        if (divs.length >= 1) metadata.size = divs[0].textContent.trim();
+        if (divs.length >= 2) metadata.time = divs[1].textContent.trim();
+      }
+
+      // Lấy Thumbnail (Tránh lấy ảnh placeholder/blur quá cũ)
+      const imgEl = activeRow.querySelector('.el-image img');
+      if (imgEl && imgEl.src && !imgEl.src.startsWith('data:')) {
+        metadata.thumbnail = imgEl.src;
+      } else {
+        const blurEl = activeRow.querySelector('.file-cover .blur');
+        if (blurEl && blurEl.style.backgroundImage) {
+          const bgImg = blurEl.style.backgroundImage.slice(5, -2);
+          if (bgImg && !bgImg.startsWith('data:')) metadata.thumbnail = bgImg;
+        }
       }
     }
 
-    return document.title || 'Unknown Title';
+    // Nếu tiêu đề là "PikPak" (chưa load xong), cố gắng lấy từ video hiện tại
+    if (!metadata.title || metadata.title === 'PikPak') {
+      const videoTitle = document.querySelector('.video-title, .playing-title');
+      if (videoTitle) metadata.title = videoTitle.textContent.trim();
+    }
+
+    return metadata;
   }
 
-  // Thêm URL mới vào bộ nhớ (loại bỏ trùng lặp)
-  function addUrl(fullUrl) {
+  // Thêm URL mới hoặc cập nhật metadata cho URL cũ (Chống trùng lặp tuyệt đối)
+  function addUrl(fullUrl, providedMeta = null) {
     chrome.storage.local.get(['urls'], (data) => {
       let urls = data.urls || [];
-      if (urls.some(u => u.url === fullUrl)) return;
-
       const expiry = parseExpiry(fullUrl);
-      const title = getCurrentTitle();
+      const meta = providedMeta || getCurrentMetadata();
+
+      // Tìm kiếm trùng lặp thông minh:
+      // 1. Trùng URL tuyệt đối
+      // 2. Hoặc trùng cả Tên và Dung lượng (Dấu hiệu của cùng 1 file từ CDN khác nhau)
+      const existingIndex = urls.findIndex(u => {
+        const isSameUrl = u.url === fullUrl;
+        const isSameFile = (meta.title && meta.title !== 'Unknown Title' && u.title === meta.title) && 
+                           (meta.size && u.size === meta.size);
+        return isSameUrl || isSameFile;
+      });
+
+      if (existingIndex !== -1) {
+        // Cập nhật thông tin nếu cái mới "xịn" hơn
+        const current = urls[existingIndex];
+        const isBetter = (!current.thumbnail && meta.thumbnail) || 
+                         (current.title === 'Unknown Title' && meta.title && meta.title !== 'Unknown Title');
+
+        if (isBetter || urls[existingIndex].url !== fullUrl) {
+          urls[existingIndex] = {
+            ...current,
+            // Nếu URL khác nhưng cùng file, ta giữ URL mới nhất (thường là cái đang active)
+            url: fullUrl || current.url, 
+            title: meta.title || current.title,
+            size: meta.size || current.size,
+            time: meta.time || current.time,
+            thumbnail: meta.thumbnail || current.thumbnail,
+          };
+          chrome.storage.local.set({ urls: urls }, () => {
+            chrome.runtime.sendMessage({ type: 'UPDATE_COUNT' });
+          });
+        }
+        return;
+      }
+
       const newUrl = {
         url: fullUrl,
-        title: title,
+        title: meta.title || 'Unknown Title',
+        size: meta.size,
+        time: meta.time,
+        thumbnail: meta.thumbnail,
         expiry: expiry,
         addedAt: Date.now()
       };

@@ -42,7 +42,16 @@ function renderUrls() {
     const itemEl = document.createElement('div');
     itemEl.className = 'url-item';
     itemEl.innerHTML = `
-      <div class="url-title" title="${item.title}">${item.title}</div>
+      <div class="url-card-main">
+        ${item.thumbnail ? `<img src="${item.thumbnail}" class="url-thumbnail" onerror="this.style.display='none'">` : ''}
+        <div class="url-info">
+          <div class="url-title" title="${item.title}">${item.title}</div>
+          <div class="url-meta">
+            ${item.size ? `<span class="meta-tag size">${item.size}</span>` : ''}
+            ${item.time ? `<span class="meta-tag time">${item.time}</span>` : ''}
+          </div>
+        </div>
+      </div>
       <textarea class="url-textarea" readonly>${item.url}</textarea>
       <div class="url-footer">
         <div class="countdown" id="timer-${index}">Hết hạn: ${timeStr}</div>
@@ -91,14 +100,69 @@ document.getElementById('pikpak-clear').addEventListener('click', () => {
   chrome.runtime.sendMessage({ type: 'UPDATE_COUNT' });
 });
 
+// Xử lý nút Scan Folder
+document.getElementById('pikpak-scan').addEventListener('click', () => {
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    if (tabs[0]) {
+      // Gửi yêu cầu quét trang đến content script
+      chrome.scripting.executeScript({
+        target: { tabId: tabs[0].id },
+        func: () => {
+          // Chỉ đơn giản là trigger lại các request hoặc cuộn trang để PikPak tải thêm data
+          window.scrollTo(0, document.body.scrollHeight);
+          setTimeout(() => window.scrollTo(0, 0), 500);
+          console.log('PikPak Extractor: Đang quét lại trang...');
+        }
+      });
+    }
+  });
+});
+
+// Xử lý Export đa định dạng
 document.getElementById('pikpak-export').addEventListener('click', () => {
   if (urls.length === 0) return;
-  const text = urls.map(u => `Title: ${u.title}\nURL: ${u.url}\n`).join('\n---\n\n');
-  const blob = new Blob([text], { type: 'text/plain' });
+  
+  const format = document.getElementById('export-format').value;
+  let text = '';
+  let filename = `pikpak_links_${new Date().getTime()}`;
+  let type = 'text/plain';
+
+  switch (format) {
+    case 'json':
+      text = JSON.stringify(urls, null, 2);
+      filename += '.json';
+      type = 'application/json';
+      break;
+
+    case 'm3u8':
+      text = '#EXTM3U\n';
+      urls.forEach(u => {
+        text += `#EXTINF:-1,${u.title}${u.size ? ` [${u.size}]` : ''}\n${u.url}\n`;
+      });
+      filename += '.m3u8';
+      break;
+
+    case 'idm':
+      text = urls.map(u => u.url).join('\n');
+      filename += '_idm.txt';
+      break;
+
+    default: // txt
+      text = urls.map(u => {
+        let info = `Title: ${u.title}\n`;
+        if (u.size) info += `Size: ${u.size}\n`;
+        if (u.time) info += `Time: ${u.time}\n`;
+        info += `URL: ${u.url}\n`;
+        return info;
+      }).join('\n---\n\n');
+      filename += '.txt';
+  }
+
+  const blob = new Blob([text], { type: type });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `pikpak-urls-${Date.now()}.txt`;
+  a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
 });

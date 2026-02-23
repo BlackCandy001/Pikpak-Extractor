@@ -9,10 +9,14 @@
     return url && url.includes(TARGET_DOMAIN) && url.includes(DOWNLOAD_PATH);
   }
 
-  // Gửi URL bắt được về content script
-  function reportUrl(url) {
+  // Gửi URL bắt được về content script kèm metadata nếu có
+  function reportUrl(url, providedMeta = null) {
     if (isPikPakDownloadUrl(url)) {
-      window.postMessage({ type: 'PIKPAK_URL_FOUND', url: url }, '*');
+      window.postMessage({ 
+        type: 'PIKPAK_URL_FOUND', 
+        url: url, 
+        metadata: providedMeta 
+      }, '*');
     }
   }
 
@@ -22,13 +26,14 @@
     const response = await originalFetch(...args);
     const url = args[0] instanceof Request ? args[0].url : args[0];
     
-    // Kiểm tra URL yêu cầu
-    reportUrl(url);
+    // Nếu là link tải trực tiếp (không thông qua JSON), báo cáo ngay
+    if (isPikPakDownloadUrl(url)) {
+      reportUrl(url);
+    }
 
-    // Một số link có thể nằm trong nội dung phản hồi JSON
     const clone = response.clone();
     clone.json().then(data => {
-      findUrlsInObject(data);
+      traverseObject(data);
     }).catch(() => {});
 
     return response;
@@ -38,7 +43,10 @@
   const originalOpen = XMLHttpRequest.prototype.open;
   XMLHttpRequest.prototype.open = function(method, url) {
     this._url = url;
-    reportUrl(url);
+    // Báo cáo ngay nếu là link tải trực tiếp
+    if (isPikPakDownloadUrl(url)) {
+      reportUrl(url);
+    }
     return originalOpen.apply(this, arguments);
   };
 
@@ -47,21 +55,54 @@
     this.addEventListener('load', function() {
       try {
         const data = JSON.parse(this.responseText);
-        findUrlsInObject(data);
+        traverseObject(data);
       } catch (e) {}
     });
     return originalSend.apply(this, arguments);
   };
 
-  // Hàm tìm kiếm đệ quy các URL trong object JSON
-  function findUrlsInObject(obj) {
-    if (!obj) return;
-    const str = JSON.stringify(obj);
-    const regex = /https:\/\/[^"']+\.mypikpak\.com\/download\/\?fid=[^"']+/g;
-    const matches = str.match(regex);
-    if (matches) {
-      matches.forEach(reportUrl);
+  // Hàm duyệt object đệ quy để tìm URL và Metadata đi kèm
+  function traverseObject(obj) {
+    if (!obj || typeof obj !== 'object') return;
+
+    // Nếu object này chứa link tải
+    if (obj.web_content_link || (obj.download_url && isPikPakDownloadUrl(obj.download_url))) {
+      const url = obj.web_content_link || obj.download_url;
+      const meta = {
+        title: obj.name || obj.file_name,
+        size: formatSize(obj.size),
+        time: formatTime(obj.modified_time || obj.created_time),
+        thumbnail: obj.thumbnail_link || obj.icon_link
+      };
+      reportUrl(url, meta);
     }
+
+    // Tiếp tục duyệt sâu hơn
+    for (const key in obj) {
+      if (typeof obj[key] === 'object') {
+        traverseObject(obj[key]);
+      } else if (typeof obj[key] === 'string' && isPikPakDownloadUrl(obj[key])) {
+        reportUrl(obj[key]);
+      }
+    }
+  }
+
+  function formatSize(bytes) {
+    if (!bytes) return null;
+    bytes = parseInt(bytes);
+    if (isNaN(bytes)) return null;
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  }
+
+  function formatTime(timeStr) {
+    if (!timeStr) return null;
+    try {
+      const date = new Date(timeStr);
+      return date.toLocaleDateString('vi-VN') + ' ' + date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+    } catch (e) { return null; }
   }
 
   // Định kỳ kiểm tra thẻ <video> trong DOM

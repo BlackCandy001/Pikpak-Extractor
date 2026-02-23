@@ -32,13 +32,18 @@
       <div class="panel-header" id="pikpak-drag-handle">
         <div class="panel-title">PikPak Extractor PRO</div>
         <div class="header-actions">
-          <button class="btn btn-primary btn-small" id="pikpak-export">
-            Export
-          </button>
-          <button class="btn btn-secondary btn-small" id="pikpak-clear">
-            Clear
-          </button>
-        </div>
+      <button id="pikpak-scan" class="btn btn-primary btn-small">Scan Folder</button>
+      <div class="export-group">
+        <select id="export-format" class="select-small">
+          <option value="txt">Text</option>
+          <option value="json">JSON</option>
+          <option value="m3u8">M3U8</option>
+          <option value="idm">IDM List</option>
+        </select>
+        <button id="pikpak-export" class="btn btn-secondary btn-small">Export</button>
+      </div>
+      <button id="pikpak-clear" class="btn btn-danger-text btn-small">Clear</button>
+    </div>
       </div>
       <div class="panel-body" id="pikpak-url-list">
         <div class="panel-empty">
